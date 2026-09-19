@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Env / secrets
+.env
+credentials.json
+token.json
+
+# Model artifacts (large — never commit)
+adapter/
+*.jsonl
+*.bin
+*.safetensors
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS
+.DS_Store
