@@ -1,0 +1,6 @@
+.env
+__pycache__/
+*.gguf
+*.db
+*.session
+rag_memory/
