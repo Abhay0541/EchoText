@@ -3,4 +3,6 @@ __pycache__/
 *.gguf
 *.db
 *.session
-rag_memory/
+rag_memory/proxy_status.txt
+my_proxy.session
+backend/database.db
