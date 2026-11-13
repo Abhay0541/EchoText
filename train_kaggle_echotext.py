@@ -1,20 +1,70 @@
 # ==============================================================================
-# CELL 1: DEPENDENCY INSTALLATION (PURE PYTORCH + TRANSFORMERS + PEFT)
+# ECHOTEXT QWEN2.5-7B LORA FINE-TUNING — KAGGLE NOTEBOOK
 # ==============================================================================
-# This setup avoids all conflicts between trl, datasets, and huggingface-hub
-# by using native PyTorch Dataset + standard transformers.Trainer!
+# HOW TO USE THIS NOTEBOOK:
+#   1. Paste CELL 1 into a new Kaggle code cell and RUN it.
+#   2. After Cell 1 finishes, go to: Session ▸ Restart Session  (or use Ctrl+M .)
+#   3. THEN run CELL 2 (the main training cell).
+#
+# This two-cell approach is REQUIRED because Kaggle caches stale .pyc bytecode
+# in memory and the only reliable fix is a kernel restart after pip install.
 # ==============================================================================
 
-!pip install -q --no-warn-conflicts "peft>=0.13.0" "bitsandbytes>=0.44.0" "accelerate>=0.34.0"
-!git clone --depth 1 https://github.com/ggerganov/llama.cpp.git > /dev/null 2>&1
-!pip install -q -r llama.cpp/requirements.txt --no-warn-conflicts > /dev/null 2>&1
+# ==============================================================================
+# ██████████████████████  CELL 1 — INSTALL & RESTART  ██████████████████████████
+# ==============================================================================
+# Run this cell, then do: Session ▸ Restart Session, THEN run Cell 2.
 
-print("[OK] Clean environment ready! No conflicting packages needed.")
+import subprocess, sys
+
+print("=" * 70)
+print("CELL 1: Installing packages...")
+print("=" * 70)
+
+packages = [
+    "transformers==4.47.1",
+    "peft>=0.13.0",
+    "bitsandbytes>=0.44.0",
+    "accelerate>=0.34.0",
+]
+
+for pkg in packages:
+    print(f"  Installing {pkg}...")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q", "--no-warn-conflicts",
+         "--force-reinstall", pkg],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"  [WARN] {pkg}: {result.stderr[-200:]}")
+    else:
+        print(f"  [OK] {pkg}")
+
+# Clone llama.cpp for GGUF conversion
+print("\nCloning llama.cpp for GGUF conversion...")
+subprocess.run(
+    ["git", "clone", "--depth", "1", "https://github.com/ggerganov/llama.cpp.git"],
+    capture_output=True
+)
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-q", "-r", "llama.cpp/requirements.txt"],
+    capture_output=True
+)
+
+print("\n" + "=" * 70)
+print("✅ CELL 1 DONE!")
+print("")
+print("⚠️  NOW DO THIS:")
+print("   Session  ▸  Restart Session   (top menu bar)")
+print("   Then run CELL 2.")
+print("=" * 70)
 
 
 # ==============================================================================
-# CELL 2: COMPLETE TRAINING & GGUF EXPORT (ZERO 'DATASETS' OR 'TRL' DEPENDENCY)
+# ██████████████████████  CELL 2 — FULL TRAINING  ██████████████████████████████
 # ==============================================================================
+# Only run this AFTER restarting the session from Cell 1!
+
 import os
 import glob
 import sys
@@ -35,46 +85,47 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, Pe
 from IPython.display import FileLink, display
 
 # ------------------------------------------------------------------------------
-# 1. Base Model & Directories
+# 1. Config
 # ------------------------------------------------------------------------------
-MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
-
+MODEL_ID   = "Qwen/Qwen2.5-7B-Instruct"
 OUTPUT_DIR = "/kaggle/working/echotext_lora_output"
 MERGED_DIR = "/kaggle/working/echotext_merged_model"
-GGUF_DIR = "/kaggle/working/echotext_gguf"
+GGUF_DIR   = "/kaggle/working/echotext_gguf"
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(MERGED_DIR, exist_ok=True)
-os.makedirs(GGUF_DIR, exist_ok=True)
+for d in [OUTPUT_DIR, MERGED_DIR, GGUF_DIR]:
+    os.makedirs(d, exist_ok=True)
 
 print("=" * 80)
-print(f"EchoText Native Fine-Tuning: {MODEL_ID}")
+print(f"EchoText Fine-Tuning  |  Base: {MODEL_ID}")
 print("=" * 80)
-print(f"CUDA Available: {torch.cuda.is_available()}")
+print(f"CUDA: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
-    print(f"GPU: {torch.cuda.get_device_name(0)}")
-    print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+    for i in range(torch.cuda.device_count()):
+        props = torch.cuda.get_device_properties(i)
+        print(f"  GPU {i}: {props.name}  ({props.total_memory/1e9:.1f} GB)")
 
 # ------------------------------------------------------------------------------
-# 2. Locate Dataset File
+# 2. Find dataset
 # ------------------------------------------------------------------------------
-print("\n[1/6] Searching for echotext_1000_training_dataset.jsonl...")
-dataset_files = glob.glob("/kaggle/input/**/echotext_1000_training_dataset.jsonl", recursive=True)
+print("\n[1/6] Locating dataset...")
+dataset_files = (
+    glob.glob("/kaggle/input/**/echotext_1000_training_dataset.jsonl", recursive=True) or
+    glob.glob("/kaggle/input/**/*.jsonl", recursive=True) or
+    glob.glob("*.jsonl")
+)
 if not dataset_files:
-    dataset_files = glob.glob("/kaggle/input/**/*.jsonl", recursive=True)
-if not dataset_files:
-    dataset_files = glob.glob("*.jsonl")
-
-if not dataset_files:
-    raise FileNotFoundError("Could not find dataset! Please upload 'echotext_1000_training_dataset.jsonl' via '+ Add Input'.")
+    raise FileNotFoundError(
+        "Cannot find dataset!\n"
+        "Please add it via '+ Add Input' → Dataset → search 'knowrajput/chatsdata-1000'."
+    )
 
 DATASET_PATH = dataset_files[0]
-print(f"Found dataset at: {DATASET_PATH}")
+print(f"  Found: {DATASET_PATH}")
 
 # ------------------------------------------------------------------------------
-# 3. Load Tokenizer & 4-Bit QLoRA Model
+# 3. Tokenizer + 4-bit Model
 # ------------------------------------------------------------------------------
-print(f"\n[2/6] Loading tokenizer and 4-bit base model ({MODEL_ID})...")
+print(f"\n[2/6] Loading tokenizer & 4-bit model ({MODEL_ID})...")
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
 if tokenizer.pad_token is None:
@@ -99,23 +150,27 @@ model = prepare_model_for_kbit_training(model)
 peft_config = LoraConfig(
     r=16,
     lora_alpha=32,
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+    target_modules=[
+        "q_proj", "k_proj", "v_proj", "o_proj",
+        "gate_proj", "up_proj", "down_proj",
+    ],
     lora_dropout=0.05,
     bias="none",
     task_type="CAUSAL_LM",
 )
-
 model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()
 
 # ------------------------------------------------------------------------------
-# 4. Pure PyTorch Dataset (Bypasses 'datasets' library completely)
+# 4. Pure PyTorch Dataset (no `datasets` library needed)
 # ------------------------------------------------------------------------------
-print("\n[3/6] Building PyTorch dataset from JSONL...")
+print("\n[3/6] Building dataset...")
 
 class EchoTextDataset(Dataset):
-    def __init__(self, jsonl_path, tok, max_len=1024):
-        self.samples = []
+    def __init__(self, jsonl_path: str, tok, max_len: int = 1024):
+        self.tok = tok
+        self.max_len = max_len
+        self.samples: list[str] = []
         with open(jsonl_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -125,50 +180,45 @@ class EchoTextDataset(Dataset):
                     obj = json.loads(line)
                     messages = obj.get("messages", [])
                     if messages:
-                        formatted_text = tok.apply_chat_template(
+                        text = tok.apply_chat_template(
                             messages,
                             tokenize=False,
                             add_generation_prompt=False,
                         )
-                        self.samples.append(formatted_text)
+                        self.samples.append(text)
                 except Exception:
                     continue
-        self.tok = tok
-        self.max_len = max_len
+        print(f"  Loaded {len(self.samples)} training examples.")
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        text = self.samples[idx]
         enc = self.tok(
-            text,
+            self.samples[idx],
             truncation=True,
             max_length=self.max_len,
             padding=False,
             return_tensors=None,
         )
-        input_ids = enc["input_ids"]
-        attention_mask = enc["attention_mask"]
-        labels = list(input_ids)
+        ids = enc["input_ids"]
         return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels,
+            "input_ids": ids,
+            "attention_mask": enc["attention_mask"],
+            "labels": list(ids),
         }
 
 train_dataset = EchoTextDataset(DATASET_PATH, tokenizer)
-print(f"Dataset successfully compiled: {len(train_dataset)} examples.")
 
 # ------------------------------------------------------------------------------
-# 5. Training with Standard Hugging Face Trainer
+# 5. Train
 # ------------------------------------------------------------------------------
-print("\n[4/6] Starting Trainer execution...")
+print("\n[4/6] Starting training...")
 
 training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
     per_device_train_batch_size=2,
-    gradient_accumulation_steps=4,  # Effective batch size = 8
+    gradient_accumulation_steps=4,   # effective batch = 8
     learning_rate=2e-4,
     lr_scheduler_type="cosine",
     warmup_ratio=0.05,
@@ -180,6 +230,7 @@ training_args = TrainingArguments(
     bf16=torch.cuda.is_bf16_supported(),
     optim="paged_adamw_8bit",
     report_to="none",
+    dataloader_pin_memory=False,
 )
 
 data_collator = DataCollatorForSeq2Seq(
@@ -197,17 +248,16 @@ trainer = Trainer(
 )
 
 trainer.train()
-print("\n[OK] Training completed! Saving LoRA adapter weights...")
+print("[OK] Training complete! Saving LoRA adapter...")
 trainer.save_model(OUTPUT_DIR)
 tokenizer.save_pretrained(OUTPUT_DIR)
 
 # ------------------------------------------------------------------------------
-# 6. Merge LoRA Weights into 16-Bit Base Model
+# 6. Merge LoRA → 16-bit
 # ------------------------------------------------------------------------------
-print("\n[5/6] Merging LoRA adapter with base model into 16-bit...")
+print("\n[5/6] Merging LoRA into base model (16-bit, CPU)...")
 
-del model
-del trainer
+del model, trainer
 gc.collect()
 torch.cuda.empty_cache()
 
@@ -219,59 +269,85 @@ base_model = AutoModelForCausalLM.from_pretrained(
 )
 merged_model = PeftModel.from_pretrained(base_model, OUTPUT_DIR)
 merged_model = merged_model.merge_and_unload()
-
-print(f"Saving merged 16-bit model to: {MERGED_DIR}")
 merged_model.save_pretrained(MERGED_DIR, safe_serialization=True)
 tokenizer.save_pretrained(MERGED_DIR)
+print(f"  Merged model saved to: {MERGED_DIR}")
 
-del base_model
-del merged_model
+del base_model, merged_model
 gc.collect()
 
 # ------------------------------------------------------------------------------
-# 7. Convert to GGUF (FP16 & Q4_K_M)
+# 7. GGUF conversion
 # ------------------------------------------------------------------------------
-print("\n[6/6] Converting merged model to GGUF format...")
-
-fp16_gguf = f"{GGUF_DIR}/echotext-qwen2.5-7b-fp16.gguf"
-final_q4_gguf = f"{GGUF_DIR}/echotext-qwen2.5-7b-Q4_K_M.gguf"
+print("\n[6/6] Converting to GGUF...")
 
 import subprocess
 
-# Convert to FP16 GGUF
-subprocess.run([
-    sys.executable, "llama.cpp/convert_hf_to_gguf.py",
-    MERGED_DIR,
-    "--outfile", fp16_gguf,
-    "--outtype", "f16"
-], check=True)
-print(f"FP16 GGUF generated at: {fp16_gguf}")
+fp16_gguf  = f"{GGUF_DIR}/echotext-qwen2.5-7b-fp16.gguf"
+q4_gguf    = f"{GGUF_DIR}/echotext-qwen2.5-7b-Q4_K_M.gguf"
 
-# Compile llama-quantize binary
-print("Compiling llama-quantize...")
-subprocess.run(["cmake", "-B", "llama.cpp/build", "llama.cpp"], check=False)
-subprocess.run(["cmake", "--build", "llama.cpp/build", "--config", "Release", "--target", "llama-quantize"], check=False)
-
-quantize_bin = "llama.cpp/build/bin/llama-quantize"
-if not os.path.exists(quantize_bin):
-    quantize_bin = "llama.cpp/llama-quantize"
-
-if os.path.exists(quantize_bin):
-    print("Quantizing GGUF to Q4_K_M...")
-    subprocess.run([quantize_bin, fp16_gguf, final_q4_gguf, "Q4_K_M"], check=True)
-    if os.path.exists(fp16_gguf):
-        os.remove(fp16_gguf)  # Clean up FP16 to save disk
-    print(f"\n[SUCCESS] Final Quantized GGUF saved to: {final_q4_gguf}")
-    target_download_path = final_q4_gguf
+# Convert merged model → FP16 GGUF
+print("  Step 6a: HF → FP16 GGUF...")
+r = subprocess.run(
+    [sys.executable, "llama.cpp/convert_hf_to_gguf.py",
+     MERGED_DIR, "--outfile", fp16_gguf, "--outtype", "f16"],
+    capture_output=True, text=True
+)
+if r.returncode != 0:
+    print(f"  [WARN] convert_hf_to_gguf.py stderr:\n{r.stderr[-500:]}")
 else:
-    print(f"\n[NOTICE] Quantizer binary skipped; using FP16 GGUF: {fp16_gguf}")
-    target_download_path = fp16_gguf
+    print(f"  FP16 GGUF saved: {fp16_gguf}")
+
+# Compile llama-quantize
+print("  Step 6b: Compiling llama-quantize...")
+subprocess.run(
+    ["cmake", "-B", "llama.cpp/build", "llama.cpp",
+     "-DCMAKE_BUILD_TYPE=Release"],
+    capture_output=True
+)
+subprocess.run(
+    ["cmake", "--build", "llama.cpp/build",
+     "--config", "Release", "--target", "llama-quantize", "-j4"],
+    capture_output=True
+)
+
+# Find binary
+quantize_bin = next(
+    (p for p in [
+        "llama.cpp/build/bin/llama-quantize",
+        "llama.cpp/build/llama-quantize",
+        "llama.cpp/llama-quantize",
+    ] if os.path.exists(p)),
+    None
+)
+
+if quantize_bin and os.path.exists(fp16_gguf):
+    print("  Step 6c: Quantising to Q4_K_M...")
+    r = subprocess.run(
+        [quantize_bin, fp16_gguf, q4_gguf, "Q4_K_M"],
+        capture_output=True, text=True
+    )
+    if r.returncode == 0:
+        os.remove(fp16_gguf)
+        target = q4_gguf
+        print(f"  [OK] Q4_K_M GGUF: {target}")
+    else:
+        print(f"  [WARN] Quantise failed; keeping FP16. stderr:\n{r.stderr[-300:]}")
+        target = fp16_gguf
+else:
+    print("  [NOTICE] llama-quantize not found; keeping FP16 GGUF.")
+    target = fp16_gguf if os.path.exists(fp16_gguf) else None
 
 # ------------------------------------------------------------------------------
-# 8. Interactive Download Link
+# 8. Done — download link
 # ------------------------------------------------------------------------------
 print("\n" + "=" * 80)
-print("TRAINING & EXPORT FINISHED SUCCESSFULLY!")
-print("Click the link below to download your model file:")
+print("🎉 TRAINING & EXPORT COMPLETE!")
 print("=" * 80)
-display(FileLink(target_download_path))
+if target and os.path.exists(target):
+    size_mb = os.path.getsize(target) / 1e6
+    print(f"  File : {target}")
+    print(f"  Size : {size_mb:.1f} MB")
+    display(FileLink(target))
+else:
+    print("  [WARN] Target GGUF not found — check logs above.")
