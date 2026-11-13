@@ -1,0 +1,31 @@
+id,lang,tier,tone,type,prompt,reply,latency_sec,passes_tone,passes_relation,passes_grounding,passes_lang,overall_pass,fail_reason
+EN_PROF_01,english,professor,formal_english,grounded,"Dear Aman, please share your project progress report by 5 PM today.","Sir, Aman is currently busy on bus",13.335,True,True,False,True,False,missed_fact_email
+EN_PROF_02,english,professor,formal_english,ungrounded,Are you planning to attend the faculty colloquium tomorrow morning?,"Nhi sir, busy",12.952,False,True,True,False,False,slang_in_formal
+EN_PROF_03,english,professor,formal_english,ungrounded,"Hello Aman, did you get my feedback on your research abstract?","Nhi sir, kuch nhi mila",13.928,False,True,False,False,False,slang_in_formal
+EN_PROF_04,english,professor,formal_english,grounded,Please let me know if your seminar slides are ready for Monday.,"Sir, slides 90% ready h, final review kr rha hu",11.807,False,True,True,False,False,slang_in_formal
+EN_PROF_05,english,professor,formal_english,ungrounded,When will you return the library book on Distributed Systems?,Sir ne 15th ko liya tha,13.145,False,True,False,True,False,hinglish_leak_in_formal_or_professor
+EN_PROF_06,english,professor,formal_english,grounded,Good morning. Please confirm your lab attendance for today.,Good morning sir. Hn aaya tha,11.248,False,True,False,False,False,slang_in_formal
+EN_PROF_07,english,professor,formal_english,greeting,"Good evening Aman, hope your preparations are going well.",Bhai thoda tension h,14.041,False,False,True,False,False,slang_in_formal
+EN_PROF_08,english,professor,formal_english,ungrounded,Where are you currently traveling for the conference?,Aman is busy,13.108,True,True,True,True,True,ok
+EN_COLL_01,english,colleague,formal_english,grounded,Can you review PR #142 for the authentication module?,Aman busy abhi,10.225,False,True,False,True,False,hinglish_leak_in_formal_or_professor
+EN_COLL_02,english,colleague,concise,ungrounded,Is the production deployment on track for tonight?,Kuch nhi soch rha h,11.771,True,True,False,True,False,hallucinated_without_grounding
+EN_COLL_03,english,colleague,formal_english,grounded,Did you push the test fixes to the staging branch?,Hn push kr diya tha,10.588,False,True,False,False,False,slang_in_formal
+EN_COLL_04,english,colleague,concise,ungrounded,Are you joining the client demo at 4:30 PM?,Nhi bhai kuch nhi mila,12.055,False,True,False,True,False,casual_slang_forbidden_for_colleague_concise
+EN_COLL_05,english,colleague,formal_english,greeting,"Hi Aman, ping me whenever you get online.","Busy rn, bta krunga jab milunga",12.947,True,True,True,True,True,ok
+EN_COLL_06,english,colleague,formal_english,ungrounded,What is the estimated compute cost for this month's cluster?,Sorry Aman is busy,12.25,True,True,True,True,True,ok
+EN_FAM_01,english,family,warm_family,greeting,Hello dear Aman! How is your health and college going?,Thodi der mein call karta hoon ji,11.347,True,True,True,True,True,ok
+EN_FAM_02,english,family,warm_family,ungrounded,When will you be coming home for Diwali vacations?,"Aman is busy, will reply soon",11.252,True,True,True,True,True,ok
+EN_FAM_03,english,family,warm_family,grounded,Did you receive the courier package Mom sent yesterday?,"Hn ji, package aaya tha fir se",9.743,True,True,False,True,False,missed_fact_received
+EN_FAM_04,english,family,warm_family,greeting,Remember to take your vitamins after dinner dear.,"Hn ji, thodi der baad yaar",11.399,False,False,True,True,False,casual_slang_forbidden_for_family_warm_family
+EN_FRND_01,english,friend,casual_hinglish,ungrounded,"Hey bro, are we playing football in the evening?",Nhi bhai abhi tk nhi h,10.608,True,True,False,True,False,hallucinated_without_grounding
+EN_FRND_02,english,friend,casual_hinglish,grounded,Bro send me the operating systems lecture notes please.,Bhai abhi busy hu,8.266,True,True,False,True,False,missed_fact_drive
+EN_FRND_03,english,friend,concise,ungrounded,Are you coming to the cafeteria right now?,Nhi bhai busy,10.225,True,True,True,True,True,ok
+EN_FRND_04,english,friend,casual_hinglish,greeting,"Yo Aman, what's up man?",Busy bhai abhi thoda,10.215,True,True,True,True,True,ok
+HI_PROF_01,hindi,professor,polite_hinglish,grounded,"अमन, क्या आपका प्रोजेक्ट सिनॉप्सिस तैयार हो गया है?",Nhi abhi tk nhi complete h,12.776,False,True,False,False,False,slang_in_formal
+HI_PROF_02,hindi,professor,polite_hinglish,ungrounded,"नमस्ते अमन, क्या आप कल दोपहर 2 बजे विभाग में मिल सकते हैं?",बस मैं 2:30 के आसपास ही आता हूँ,15.81,False,True,False,True,False,hinglish_leak_in_formal_or_professor
+HI_PROF_03,hindi,professor,polite_hinglish,ungrounded,"अमन, कल की परीक्षा के एडमिट कार्ड कब वितरित होंगे?",UNSURE,13.438,True,False,False,False,False,hallucinated_without_grounding
+HI_PROF_04,hindi,professor,polite_hinglish,grounded,"शुभ प्रभात अमन, क्या आपने लैब रिपोर्ट अपलोड कर दी है?","Nhi ji, अभी तक nhi",13.011,False,True,False,True,False,slang_in_formal
+HI_PROF_05,hindi,professor,polite_hinglish,greeting,"नमस्ते अमन, आप कैसे हैं?","धन्यवाद, मैं थका हुआ हूँ, बस कुछ पढ़ने के बाद ही बोल पाऊँगा",17.35,False,True,True,True,False,hinglish_leak_in_formal_or_professor
+HI_FAM_01,hindi,family,warm_family,grounded,"बेटा अमन, खाना खा लिया क्या? तबीयत कैसी है तुम्हारी?","Hnji, खा लिया tha, तबीयत bhi theek h",12.861,True,True,False,True,False,missed_fact_ठीक
+HI_FAM_02,hindi,family,warm_family,ungrounded,"अमन, तुम्हारी ट्रेन कितने बजे पहुंचेगी स्टेशन पर?",Thodi der mein call karta hu,12.764,True,True,False,False,False,hallucinated_without_grounding
+HI_FAM_03,hindi,family,warm_family,greeting,"प्रणाम बेटा, खुश रहो। अपनी पढ़ाई पर ध्यान देना।","धन्यवाद दादी, मैं ठीक हूँ, पढ़ाई पर ध्यान दूंगा।",14.634,True,True,True,True,True,ok

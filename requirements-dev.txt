@@ -1,0 +1,7 @@
+# Development, testing, linting, type-checking & supply-chain audit dependencies
+-r requirements.txt
+pytest==8.3.5
+ruff==0.9.10
+bandit==1.8.3
+mypy==1.15.0
+pip-audit==2.8.0

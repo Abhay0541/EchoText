@@ -1,0 +1,16 @@
+# Pre-built binary wheel index from official llama-cpp-python GitHub Releases
+# Prevents pip from compiling C/C++ from source on your CPU!
+--prefer-binary
+--only-binary=llama-cpp-python
+--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+
+# Pinned production runtime dependencies for EchoText v2.0
+fastapi==0.115.12
+uvicorn==0.34.0
+pydantic==2.10.6
+httpx==0.28.1
+streamlit==1.54.0
+telethon==1.39.0
+python-dotenv==1.2.2
+pypdf==6.21.4
+llama-cpp-python>=0.3.1,<0.4.0

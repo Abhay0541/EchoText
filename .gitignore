@@ -1,8 +1,46 @@
+# Secrets & Environment
 .env
-rag_memory/
-__pycache__/
-venv/
-*.gguf
-*.db
+.env.*
+!.env.example
+logs/.echotext_api_key
+
+# Telegram Session Files (Full Account Credentials — NEVER COMMIT)
 *.session
+*.session-journal
+my_proxy.session*
+
+# Runtime Status File (Fail-closed gate — untracked so clones start silent)
 proxy_status.txt
+*.tmp.*
+
+# Local Databases & Journals
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Local GGUF Models & Private Chat Exports
+models/
+*.gguf
+*.bin
+lora_checkpoints/
+backend/chat.txt
+backend/dataset.json
+*WhatsApp Chat*.txt
+*.zip
+
+# Scoped RAG Notes & Logs
+rag_memory/
+logs/
+*.log
+
+# Python / Tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+requirements-ci.txt

@@ -1,0 +1,51 @@
+{
+  "model_path": "C:\\Users\\kirar\\OneDrive\\Documents\\dcs projects\\EchoText_Optimized_v2\\EchoText\\models\\Llama-3.2-3B-Instruct.Q8_0.gguf",
+  "total_cases": 30,
+  "overall_passed": 8,
+  "overall_accuracy_pct": 26.7,
+  "tone_accuracy_pct": 53.3,
+  "relation_accuracy_pct": 90.0,
+  "grounding_accuracy_pct": 43.3,
+  "language_accuracy_pct": 70.0,
+  "average_latency_sec": 12.303,
+  "by_language": {
+    "english": {
+      "total": 22,
+      "passed": 7,
+      "accuracy": 31.8,
+      "tone_acc": 54.5,
+      "grounding_acc": 50.0,
+      "avg_latency": 11.657
+    },
+    "hindi": {
+      "total": 8,
+      "passed": 1,
+      "accuracy": 12.5,
+      "tone_acc": 50.0,
+      "grounding_acc": 25.0,
+      "avg_latency": 14.08
+    }
+  },
+  "by_tier": {
+    "professor": {
+      "total": 13,
+      "passed": 1,
+      "accuracy": 7.7
+    },
+    "colleague": {
+      "total": 6,
+      "passed": 2,
+      "accuracy": 33.3
+    },
+    "family": {
+      "total": 7,
+      "passed": 3,
+      "accuracy": 42.9
+    },
+    "friend": {
+      "total": 4,
+      "passed": 2,
+      "accuracy": 50.0
+    }
+  }
+}
