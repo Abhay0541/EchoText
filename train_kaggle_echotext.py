@@ -1,38 +1,37 @@
 # ==============================================================================
-# CELL 1: RUN THIS CELL FIRST TO INSTALL DEPENDENCIES & RESTART KERNEL
+# CELL 1: DEPENDENCY INSTALLATION (PURE PYTORCH + TRANSFORMERS + PEFT)
 # ==============================================================================
-# In Kaggle Notebook Settings (right sidebar):
-#   - Accelerator: GPU T4 x2 (or GPU P100)
-#   - Internet: Enabled (Turn ON)
+# This setup avoids all conflicts between trl, datasets, and huggingface-hub
+# by using native PyTorch Dataset + standard transformers.Trainer!
 # ==============================================================================
 
-!pip install -q -U --force-reinstall "transformers>=4.48.0" "accelerate>=0.34.0" "peft>=0.13.0" "trl>=0.11.0" "bitsandbytes>=0.44.0" "datasets"
-!git clone --depth 1 https://github.com/ggerganov/llama.cpp.git
-!pip install -q -r llama.cpp/requirements.txt
+!pip install -q --no-warn-conflicts "peft>=0.13.0" "bitsandbytes>=0.44.0" "accelerate>=0.34.0"
+!git clone --depth 1 https://github.com/ggerganov/llama.cpp.git > /dev/null 2>&1
+!pip install -q -r llama.cpp/requirements.txt --no-warn-conflicts > /dev/null 2>&1
 
-import os
-print("\n[OK] Dependencies installed! Restarting kernel to clear import cache...")
-os._exit(0)  # Automatically restarts kernel; session restart notice is normal!
+print("[OK] Clean environment ready! No conflicting packages needed.")
 
 
 # ==============================================================================
-# CELL 2: COMPLETE END-TO-END TRAINING & GGUF EXPORT (RUN AFTER CELL 1)
+# CELL 2: COMPLETE TRAINING & GGUF EXPORT (ZERO 'DATASETS' OR 'TRL' DEPENDENCY)
 # ==============================================================================
 import os
 import glob
 import sys
 import gc
+import json
 import torch
+from torch.utils.data import Dataset
 from pathlib import Path
-from datasets import load_dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
     TrainingArguments,
+    Trainer,
+    DataCollatorForSeq2Seq,
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, PeftModel
-from trl import SFTTrainer
 from IPython.display import FileLink, display
 
 # ------------------------------------------------------------------------------
@@ -49,7 +48,7 @@ os.makedirs(MERGED_DIR, exist_ok=True)
 os.makedirs(GGUF_DIR, exist_ok=True)
 
 print("=" * 80)
-print(f"EchoText LoRA Fine-Tuning: {MODEL_ID}")
+print(f"EchoText Native Fine-Tuning: {MODEL_ID}")
 print("=" * 80)
 print(f"CUDA Available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
@@ -57,7 +56,7 @@ if torch.cuda.is_available():
     print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
 
 # ------------------------------------------------------------------------------
-# 2. Locate & Load Dataset
+# 2. Locate Dataset File
 # ------------------------------------------------------------------------------
 print("\n[1/6] Searching for echotext_1000_training_dataset.jsonl...")
 dataset_files = glob.glob("/kaggle/input/**/echotext_1000_training_dataset.jsonl", recursive=True)
@@ -72,11 +71,8 @@ if not dataset_files:
 DATASET_PATH = dataset_files[0]
 print(f"Found dataset at: {DATASET_PATH}")
 
-raw_dataset = load_dataset("json", data_files=DATASET_PATH, split="train")
-print(f"Loaded {len(raw_dataset)} training examples.")
-
 # ------------------------------------------------------------------------------
-# 3. Load Tokenizer & 4-Bit Base Model (QLoRA)
+# 3. Load Tokenizer & 4-Bit QLoRA Model
 # ------------------------------------------------------------------------------
 print(f"\n[2/6] Loading tokenizer and 4-bit base model ({MODEL_ID})...")
 
@@ -100,7 +96,6 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 model = prepare_model_for_kbit_training(model)
 
-# LoRA Configuration
 peft_config = LoraConfig(
     r=16,
     lora_alpha=32,
@@ -114,28 +109,61 @@ model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()
 
 # ------------------------------------------------------------------------------
-# 4. Format Dataset with Chat Template
+# 4. Pure PyTorch Dataset (Bypasses 'datasets' library completely)
 # ------------------------------------------------------------------------------
-print("\n[3/6] Applying tokenizer chat template...")
+print("\n[3/6] Building PyTorch dataset from JSONL...")
 
-def format_conversations(batch):
-    formatted_texts = []
-    for messages in batch["messages"]:
-        text = tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=False,
+class EchoTextDataset(Dataset):
+    def __init__(self, jsonl_path, tok, max_len=1024):
+        self.samples = []
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    messages = obj.get("messages", [])
+                    if messages:
+                        formatted_text = tok.apply_chat_template(
+                            messages,
+                            tokenize=False,
+                            add_generation_prompt=False,
+                        )
+                        self.samples.append(formatted_text)
+                except Exception:
+                    continue
+        self.tok = tok
+        self.max_len = max_len
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        text = self.samples[idx]
+        enc = self.tok(
+            text,
+            truncation=True,
+            max_length=self.max_len,
+            padding=False,
+            return_tensors=None,
         )
-        formatted_texts.append(text)
-    return {"text": formatted_texts}
+        input_ids = enc["input_ids"]
+        attention_mask = enc["attention_mask"]
+        labels = list(input_ids)
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+        }
 
-train_dataset = raw_dataset.map(format_conversations, batched=True, remove_columns=raw_dataset.column_names)
-print("Sample formatted conversation preview:\n" + train_dataset[0]["text"][:280] + "...\n")
+train_dataset = EchoTextDataset(DATASET_PATH, tokenizer)
+print(f"Dataset successfully compiled: {len(train_dataset)} examples.")
 
 # ------------------------------------------------------------------------------
-# 5. Training with SFTTrainer
+# 5. Training with Standard Hugging Face Trainer
 # ------------------------------------------------------------------------------
-print("\n[4/6] Starting SFTTrainer execution...")
+print("\n[4/6] Starting Trainer execution...")
 
 training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
@@ -154,14 +182,18 @@ training_args = TrainingArguments(
     report_to="none",
 )
 
-trainer = SFTTrainer(
-    model=model,
+data_collator = DataCollatorForSeq2Seq(
     tokenizer=tokenizer,
-    train_dataset=train_dataset,
-    dataset_text_field="text",
-    max_seq_length=1024,
-    peft_config=peft_config,
+    pad_to_multiple_of=8,
+    return_tensors="pt",
+    padding=True,
+)
+
+trainer = Trainer(
+    model=model,
     args=training_args,
+    train_dataset=train_dataset,
+    data_collator=data_collator,
 )
 
 trainer.train()
@@ -204,9 +236,9 @@ print("\n[6/6] Converting merged model to GGUF format...")
 fp16_gguf = f"{GGUF_DIR}/echotext-qwen2.5-7b-fp16.gguf"
 final_q4_gguf = f"{GGUF_DIR}/echotext-qwen2.5-7b-Q4_K_M.gguf"
 
-# Step 1: Convert to FP16 GGUF
 import subprocess
 
+# Convert to FP16 GGUF
 subprocess.run([
     sys.executable, "llama.cpp/convert_hf_to_gguf.py",
     MERGED_DIR,
@@ -215,8 +247,8 @@ subprocess.run([
 ], check=True)
 print(f"FP16 GGUF generated at: {fp16_gguf}")
 
-# Step 2: Build llama.cpp quantizer binary
-print("Compiling llama-quantize binary...")
+# Compile llama-quantize binary
+print("Compiling llama-quantize...")
 subprocess.run(["cmake", "-B", "llama.cpp/build", "llama.cpp"], check=False)
 subprocess.run(["cmake", "--build", "llama.cpp/build", "--config", "Release", "--target", "llama-quantize"], check=False)
 
@@ -225,10 +257,10 @@ if not os.path.exists(quantize_bin):
     quantize_bin = "llama.cpp/llama-quantize"
 
 if os.path.exists(quantize_bin):
-    print("Quantizing GGUF to Q4_K_M (optimal speed/size balance)...")
+    print("Quantizing GGUF to Q4_K_M...")
     subprocess.run([quantize_bin, fp16_gguf, final_q4_gguf, "Q4_K_M"], check=True)
     if os.path.exists(fp16_gguf):
-        os.remove(fp16_gguf)  # Free up disk space
+        os.remove(fp16_gguf)  # Clean up FP16 to save disk
     print(f"\n[SUCCESS] Final Quantized GGUF saved to: {final_q4_gguf}")
     target_download_path = final_q4_gguf
 else:
@@ -236,7 +268,7 @@ else:
     target_download_path = fp16_gguf
 
 # ------------------------------------------------------------------------------
-# 8. Download Link
+# 8. Interactive Download Link
 # ------------------------------------------------------------------------------
 print("\n" + "=" * 80)
 print("TRAINING & EXPORT FINISHED SUCCESSFULLY!")
