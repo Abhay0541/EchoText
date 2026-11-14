@@ -131,15 +131,223 @@ TIER_RECOMMENDED_TONE: dict[str, str] = {
 # =============================================================================
 
 def _inject_custom_css() -> None:
-    """Inject a clean, modern, professional executive theme with high readability."""
-    st.markdown(
-        """
+    """Inject a clean, modern, professional executive theme with Dark/White mode switching."""
+    theme = st.session_state.get("app_theme", "dark")
+    if theme == "light":
+        css = """
         <style>
-        /* Base page canvas */
+        /* Base page canvas (Clean White Theme) */
         .stApp {
-            background-color: #0A0E17;
-            color: #E2E8F0;
+            background-color: #F8FAFC !important;
+            color: #0F172A !important;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* Typography */
+        h1, h2, h3, h4, h5, h6 {
+            color: #0F172A !important;
+        }
+        p, span, label, div[data-testid="stMarkdownContainer"] p {
+            color: #334155 !important;
+        }
+        .stCaption, small, p.ec-desc {
+            color: #64748B !important;
+        }
+
+        /* Top header container */
+        .ec-header {
+            background: linear-gradient(135deg, #FFFFFF, #F1F5F9);
+            border: 1px solid #E2E8F0;
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.06);
+        }
+
+        /* Title */
+        .ec-app-title {
+            color: #0F172A !important;
+        }
+
+        /* KPI Metric Cards */
+        .ec-kpi-container {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .ec-kpi-box {
+            background: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 14px;
+            padding: 16px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            transition: all 0.2s ease-in-out;
+        }
+        .ec-kpi-box:hover {
+            border-color: #6366F1 !important;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(99, 102, 241, 0.12);
+        }
+        .ec-kpi-title {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #64748B !important;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .ec-kpi-val {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #0F172A;
+        }
+
+        /* Clean pill badges */
+        .ec-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 0.76rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            margin-right: 6px;
+            margin-bottom: 4px;
+        }
+        .badge-green { background: #DCFCE7 !important; color: #166534 !important; border: 1px solid #22C55E !important; }
+        .badge-red { background: #FEE2E2 !important; color: #991B1B !important; border: 1px solid #EF4444 !important; }
+        .badge-amber { background: #FEF3C7 !important; color: #92400E !important; border: 1px solid #F59E0B !important; }
+        .badge-indigo { background: #EEF2FF !important; color: #3730A3 !important; border: 1px solid #6366F1 !important; }
+        .badge-cyan { background: #CFFAFE !important; color: #155E75 !important; border: 1px solid #06B6D4 !important; }
+        .badge-gray { background: #F1F5F9 !important; color: #334155 !important; border: 1px solid #94A3B8 !important; }
+
+        /* Standard Cards */
+        .ec-card {
+            background: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            color: #0F172A !important;
+        }
+
+        /* High-readability Chat Bubbles */
+        .ec-bubble-in {
+            background: #F1F5F9 !important;
+            border-left: 4px solid #0284C7 !important;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin: 10px 0;
+            color: #0F172A !important;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        }
+        .ec-bubble-out {
+            background: #F0FDF4 !important;
+            border-left: 4px solid #16A34A !important;
+            padding: 10px 14px;
+            border-radius: 10px;
+            margin: 8px 0;
+            color: #14532D !important;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        }
+
+        /* Attention / Flag Alert Banner */
+        .ec-flag-banner {
+            background: #FFFBEB !important;
+            border: 1px solid #F59E0B !important;
+            border-left: 5px solid #F59E0B !important;
+            color: #92400E !important;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin: 10px 0;
+            font-size: 0.92rem;
+        }
+
+        /* Section descriptions */
+        .ec-desc {
+            color: #64748B !important;
+            font-size: 0.88rem;
+            margin-bottom: 16px;
+        }
+
+        /* Streamlit Tab Customization */
+        button[data-baseweb="tab"] {
+            font-size: 0.95rem;
+            font-weight: 600;
+            padding: 10px 18px;
+            color: #64748B !important;
+        }
+        button[data-baseweb="tab"][aria-selected="true"] {
+            color: #4F46E5 !important;
+            border-bottom-color: #4F46E5 !important;
+        }
+
+        /* Container overrides for light theme */
+        div[data-testid="stExpander"], div[data-testid="stVerticalBlockBorderWrapper"] {
+            background-color: #FFFFFF !important;
+            border-color: #E2E8F0 !important;
+        }
+        div[data-testid="stExpander"] summary {
+            color: #0F172A !important;
+            font-weight: 600;
+        }
+
+        /* Inputs, textareas, and select boxes */
+        div[data-baseweb="input"] > div,
+        div[data-baseweb="textarea"] > div,
+        div[data-baseweb="select"] > div {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+            border-color: #CBD5E1 !important;
+        }
+        input, textarea {
+            color: #0F172A !important;
+            background-color: #FFFFFF !important;
+        }
+
+        /* Secondary and standard buttons */
+        button[kind="secondary"] {
+            background-color: #FFFFFF !important;
+            color: #1E293B !important;
+            border: 1px solid #CBD5E1 !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+        }
+        button[kind="secondary"]:hover {
+            background-color: #F8FAFC !important;
+            border-color: #6366F1 !important;
+            color: #4F46E5 !important;
+        }
+
+        .ec-test-box {
+            background: #F1F5F9;
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin: 8px 0;
+            color: #0F172A;
+        }
+        </style>
+        """
+    else:
+        css = """
+        <style>
+        /* Base page canvas (Dark Slate Theme) */
+        .stApp {
+            background-color: #0A0E17 !important;
+            color: #E2E8F0 !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* Typography */
+        h1, h2, h3, h4, h5, h6 {
+            color: #F8FAFC !important;
+        }
+        p, span, label, div[data-testid="stMarkdownContainer"] p {
+            color: #CBD5E1;
+        }
+        .stCaption, small, p.ec-desc {
+            color: #94A3B8 !important;
         }
 
         /* Top header container */
@@ -150,6 +358,11 @@ def _inject_custom_css() -> None:
             padding: 20px 24px;
             margin-bottom: 20px;
             box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Title */
+        .ec-app-title {
+            color: #F8FAFC !important;
         }
 
         /* KPI Metric Cards */
@@ -211,6 +424,7 @@ def _inject_custom_css() -> None:
             padding: 16px 20px;
             margin-bottom: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            color: #E2E8F0;
         }
 
         /* High-readability Chat Bubbles */
@@ -261,10 +475,18 @@ def _inject_custom_css() -> None:
             color: #6366F1 !important;
             border-bottom-color: #6366F1 !important;
         }
+
+        .ec-test-box {
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin: 8px 0;
+            color: #F1F5F9;
+        }
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
+        """
+    st.markdown(css, unsafe_allow_html=True)
 
 
 # =============================================================================
@@ -294,6 +516,9 @@ def _api_call(
 def _init_session_state() -> None:
     """Ensure database schema is created and reactive session trackers exist."""
     init_db()
+    if "app_theme" not in st.session_state:
+        stored_theme = str(get_all_system_settings().get("theme", "dark")).lower().strip()
+        st.session_state.app_theme = "light" if stored_theme == "light" else "dark"
     if "auth_tracker" not in st.session_state:
         st.session_state.auth_tracker = AuthTracker()
     if "last_catchup_digest" not in st.session_state:
@@ -322,20 +547,39 @@ def _render_auth_portal(tracker: AuthTracker) -> bool:
     has_env_password = bool(tracker.password_hash)
     can_switch_mode = user_count > 0 or has_env_password
 
+    is_dark = st.session_state.get("app_theme", "dark") == "dark"
+    title_color = "#F8FAFC" if is_dark else "#0F172A"
+    sub_color = "#94A3B8" if is_dark else "#64748B"
+
+    # Subtle top header bar with mode changer switch
+    _, top_theme_col = st.columns([6, 1])
+    with top_theme_col:
+        auth_theme_lbl = "☀️ Light" if is_dark else "🌙 Dark"
+        if st.button(
+            auth_theme_lbl,
+            key="auth_theme_toggle_btn",
+            help="Switch between Dark Slate and Clean White theme",
+            use_container_width=True,
+        ):
+            new_theme = "light" if is_dark else "dark"
+            st.session_state.app_theme = new_theme
+            set_setting("theme", new_theme)
+            st.rerun()
+
     # Centered modern card
     _, center_col, _ = st.columns([1, 2, 1])
     with center_col:
         st.write("")
         st.markdown(
-            """
+            f"""
             <div style="text-align: center; margin-bottom: 24px;">
-                <h1 style="font-size: 2.2rem; font-weight: 800; color: #F8FAFC; margin-bottom: 4px;">
+                <h1 style="font-size: 2.2rem; font-weight: 800; color: {title_color}; margin-bottom: 4px;">
                     💬 EchoText
                 </h1>
                 <p style="color: #818CF8; font-size: 1.0rem; font-weight: 500;">
                     Autonomous AI Communication Assistant
                 </p>
-                <p style="color: #94A3B8; font-size: 0.85rem;">
+                <p style="color: {sub_color}; font-size: 0.85rem;">
                     Localhost 127.0.0.1 • PBKDF2-HMAC-SHA256 • Full Local Control
                 </p>
             </div>
@@ -361,10 +605,10 @@ def _render_auth_portal(tracker: AuthTracker) -> bool:
         # --- View 1: User Registration ---
         if st.session_state.auth_mode == "register" or (user_count == 0 and not has_env_password):
             st.markdown(
-                """
+                f"""
                 <div class="ec-card" style="border-top: 4px solid #6366F1;">
-                    <h3 style="margin-top:0;">👤 Set Up Owner Account</h3>
-                    <p style="color: #94A3B8; font-size: 0.88rem;">
+                    <h3 style="margin-top:0; color: {title_color};">👤 Set Up Owner Account</h3>
+                    <p style="color: {sub_color}; font-size: 0.88rem;">
                         Create your administrator credentials to manage your AI assistant securely.
                     </p>
                 </div>
@@ -403,10 +647,10 @@ def _render_auth_portal(tracker: AuthTracker) -> bool:
         # --- View 2: User Sign In ---
         else:
             st.markdown(
-                """
+                f"""
                 <div class="ec-card" style="border-top: 4px solid #10B981;">
-                    <h3 style="margin-top:0;">🔐 Dashboard Sign In</h3>
-                    <p style="color: #94A3B8; font-size: 0.88rem;">
+                    <h3 style="margin-top:0; color: {title_color};">🔐 Dashboard Sign In</h3>
+                    <p style="color: {sub_color}; font-size: 0.88rem;">
                         Enter your username & password to access the command center.
                     </p>
                 </div>
@@ -456,7 +700,7 @@ def _render_live_header_and_kpis(tracker: AuthTracker) -> None:
     ]
 
     # Status summary banner
-    top_col1, top_col2, top_col3 = st.columns([3, 2, 1])
+    top_col1, top_col2, top_col3 = st.columns([3.2, 1.8, 1.4])
     with top_col1:
         if current_status == "BUSY" and flagged_contacts:
             st.markdown("### 🟡 EchoText Assistant — **BUSY (Review Needed on Flagged Chat)**")
@@ -503,13 +747,31 @@ def _render_live_header_and_kpis(tracker: AuthTracker) -> None:
     with top_col3:
         logged_name = tracker.current_display_name or tracker.current_username or "Admin"
         st.caption(f"👤 **{logged_name}**")
-        h_btn_c1, h_btn_c2 = st.columns(2)
+        h_btn_c1, h_btn_c2, h_btn_c3 = st.columns(3)
+        is_dark = st.session_state.get("app_theme", "dark") == "dark"
+        theme_btn_label = "☀️ Light" if is_dark else "🌙 Dark"
         with h_btn_c1:
-            if st.button("🔄 Refresh", key="top_refresh_btn", help="Refresh all database feeds and queues immediately without logging out", use_container_width=True):
-                tracker.last_activity_at = time.time()
+            if st.button(
+                theme_btn_label,
+                key="header_theme_toggle_btn",
+                help="Switch between Dark Slate and Clean White theme",
+                use_container_width=True,
+            ):
+                new_theme = "light" if is_dark else "dark"
+                st.session_state.app_theme = new_theme
+                set_setting("theme", new_theme)
                 st.rerun()
         with h_btn_c2:
-            if st.button("🚪 Logout", key="logout_btn", use_container_width=True):
+            if st.button(
+                "🔄 Sync",
+                key="top_refresh_btn",
+                help="Refresh all database feeds and queues immediately without logging out",
+                use_container_width=True,
+            ):
+                tracker.last_activity_at = time.time()
+                st.rerun()
+        with h_btn_c3:
+            if st.button("🚪 Exit", key="logout_btn", help="Sign out of dashboard", use_container_width=True):
                 st.query_params.clear()
                 tracker.logout()
                 st.rerun()
@@ -1203,6 +1465,24 @@ def _render_settings_tab() -> None:
 
     settings = get_all_system_settings()
 
+    # Category 0: UI Theme & Visual Mode
+    with st.container(border=True):
+        st.markdown("#### 🎨 Dashboard Theme & Visual Mode")
+        st.caption("Toggle between executive Dark Slate theme and high-contrast Clean White mode.")
+        current_theme = st.session_state.get("app_theme", settings.get("theme", "dark"))
+        selected_theme = st.radio(
+            "Color Theme Mode",
+            options=["Dark Slate (Executive Dark)", "Clean White (High-Contrast Light)"],
+            index=0 if current_theme == "dark" else 1,
+            horizontal=True,
+            key="settings_theme_radio",
+        )
+        theme_code = "dark" if "Dark" in selected_theme else "light"
+        if theme_code != current_theme:
+            st.session_state.app_theme = theme_code
+            set_setting("theme", theme_code)
+            st.rerun()
+
     # Category 1: Timing & Response Cadence
     with st.container(border=True):
         st.markdown("#### ⏱️ Timing, Intervals & Auto-Reply Cadence")
@@ -1518,6 +1798,7 @@ def _render_settings_tab() -> None:
                 "model_path": str(val_model_path).strip(),
                 "approval_bot_token": str(val_bot_token).strip(),
                 "owner_telegram_id": str(val_owner_tg_id).strip(),
+                "theme": str(st.session_state.get("app_theme", "dark")),
             }
             save_system_settings(updated_dict)
             set_sensitivity_threshold(int(val_sens))
@@ -1624,8 +1905,8 @@ def main() -> None:
         layout="wide",
         initial_sidebar_state="collapsed",
     )
-    _inject_custom_css()
     _init_session_state()
+    _inject_custom_css()
     tracker: AuthTracker = st.session_state.auth_tracker
 
     # 1. Gate with Registration & Login portal

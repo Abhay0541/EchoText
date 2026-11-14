@@ -426,6 +426,8 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     # 5. Mobile Approval Bot (Telegram Bot API)
     "approval_bot_token": "",
     "owner_telegram_id": "",
+    # 6. UI Theme Appearance
+    "theme": "dark",
 }
 
 
