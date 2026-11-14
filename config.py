@@ -23,9 +23,30 @@ except ImportError:  # pragma: no cover
     _dotenv_load = None  # type: ignore[assignment]
 
 
+def _load_env_fallback(env_path: Path) -> None:
+    """Fallback .env parser if python-dotenv is not installed in current environment."""
+    if not env_path.exists():
+        return
+    try:
+        content = env_path.read_text(encoding="utf-8")
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k = k.strip()
+            v = v.strip().strip("'\"")
+            if k and k not in os.environ:
+                os.environ[k] = v
+    except Exception:
+        pass
+
+
 BASE_DIR: Path = Path(__file__).resolve().parent
 if _dotenv_load is not None:
     _dotenv_load(BASE_DIR / ".env")
+else:
+    _load_env_fallback(BASE_DIR / ".env")
 
 HardwareProfile = Literal["pc_8b", "pc_3b", "phone_3b"]
 PlatformType = Literal["telegram", "whatsapp", "cli", "test"]

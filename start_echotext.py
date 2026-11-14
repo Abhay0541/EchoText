@@ -93,7 +93,12 @@ def launch_all(
         raise SystemExit(1)
 
     pids: dict[str, int] = {}
-    py_exe = sys.executable
+    venv_py = BASE_DIR / "venv" / "Scripts" / "python.exe"
+    if not venv_py.exists():
+        venv_py = BASE_DIR / ".venv" / "Scripts" / "python.exe"
+    if not venv_py.exists():
+        venv_py = BASE_DIR / "venv" / "bin" / "python"
+    py_exe = str(venv_py) if venv_py.exists() else sys.executable
 
     server_proc = _spawn_logged_process(
         [
