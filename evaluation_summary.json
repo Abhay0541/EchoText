@@ -1,51 +1,51 @@
 {
-  "model_path": "C:\\Users\\kirar\\OneDrive\\Documents\\dcs projects\\EchoText_Optimized_v2\\EchoText\\models\\Llama-3.2-3B-Instruct.Q8_0.gguf",
+  "model_path": "C:\\Users\\kirar\\OneDrive\\Documents\\dcs projects\\EchoText_Optimized_v2\\EchoText\\models\\echotext-qwen3-8b-Q4_K_M.gguf",
   "total_cases": 30,
-  "overall_passed": 8,
-  "overall_accuracy_pct": 26.7,
-  "tone_accuracy_pct": 53.3,
-  "relation_accuracy_pct": 90.0,
-  "grounding_accuracy_pct": 43.3,
-  "language_accuracy_pct": 70.0,
-  "average_latency_sec": 12.303,
+  "overall_passed": 21,
+  "overall_accuracy_pct": 70.0,
+  "tone_accuracy_pct": 86.7,
+  "relation_accuracy_pct": 100.0,
+  "grounding_accuracy_pct": 80.0,
+  "language_accuracy_pct": 100.0,
+  "average_latency_sec": 18.064,
   "by_language": {
     "english": {
       "total": 22,
-      "passed": 7,
-      "accuracy": 31.8,
-      "tone_acc": 54.5,
-      "grounding_acc": 50.0,
-      "avg_latency": 11.657
+      "passed": 17,
+      "accuracy": 77.3,
+      "tone_acc": 100.0,
+      "grounding_acc": 77.3,
+      "avg_latency": 15.604
     },
     "hindi": {
       "total": 8,
-      "passed": 1,
-      "accuracy": 12.5,
+      "passed": 4,
+      "accuracy": 50.0,
       "tone_acc": 50.0,
-      "grounding_acc": 25.0,
-      "avg_latency": 14.08
+      "grounding_acc": 87.5,
+      "avg_latency": 24.827
     }
   },
   "by_tier": {
     "professor": {
       "total": 13,
-      "passed": 1,
-      "accuracy": 7.7
+      "passed": 5,
+      "accuracy": 38.5
     },
     "colleague": {
       "total": 6,
-      "passed": 2,
-      "accuracy": 33.3
+      "passed": 6,
+      "accuracy": 100.0
     },
     "family": {
       "total": 7,
-      "passed": 3,
-      "accuracy": 42.9
+      "passed": 6,
+      "accuracy": 85.7
     },
     "friend": {
       "total": 4,
-      "passed": 2,
-      "accuracy": 50.0
+      "passed": 4,
+      "accuracy": 100.0
     }
   }
 }

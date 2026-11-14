@@ -99,16 +99,16 @@ INSECURE_DEFAULT_PASSWORDS: frozenset[str] = frozenset(
 # Hardware profiles for 8B on PC vs 3B on PC vs 3B on Phone (Termux / Android)
 MODEL_PROFILES: dict[HardwareProfile, dict[str, Any]] = {
     "pc_8b": {
-        "model_filename": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+        "model_filename": "echotext-qwen3-8b-Q4_K_M.gguf",
         "n_ctx": 4096,
         "n_threads": max(4, (os.cpu_count() or 4) - 1),
         "n_batch": 512,
         "n_gpu_layers": int(os.getenv("ECHOTEXT_GPU_LAYERS", "0")),
         "max_new_tokens": 128,
-        "description": "PC 8B profile (higher quality reasoning & Hinglish nuance)",
+        "description": "PC 8B profile (Qwen 3 8B / Llama 8B, high quality reasoning & Hinglish nuance)",
     },
     "pc_3b": {
-        "model_filename": "Llama-3.2-3B-Instruct.Q4_K_M.gguf",
+        "model_filename": "Llama-3.2-3B-Instruct.Q8_0.gguf",
         "n_ctx": 2048,
         "n_threads": max(2, (os.cpu_count() or 4) - 1),
         "n_batch": 256,
@@ -160,8 +160,54 @@ MODELS_DIR: Path = _resolve_path("ECHOTEXT_MODELS_DIR", "models")
 MODEL_PATH: Path = _resolve_path(
     "ECHOTEXT_MODEL_PATH", str(MODELS_DIR / str(ACTIVE_PROFILE["model_filename"]))
 )
-if not MODEL_PATH.exists() and (BASE_DIR / str(ACTIVE_PROFILE["model_filename"])).exists():
-    MODEL_PATH = (BASE_DIR / str(ACTIVE_PROFILE["model_filename"])).resolve()
+if not MODEL_PATH.exists():
+    if (BASE_DIR / str(ACTIVE_PROFILE["model_filename"])).exists():
+        MODEL_PATH = (BASE_DIR / str(ACTIVE_PROFILE["model_filename"])).resolve()
+    elif (MODELS_DIR / "echotext-qwen3-8b-Q4_K_M.gguf").exists():
+        MODEL_PATH = (MODELS_DIR / "echotext-qwen3-8b-Q4_K_M.gguf").resolve()
+    else:
+        # Fallback to any available .gguf file
+        existing_ggufs = list(MODELS_DIR.glob("*.gguf")) if MODELS_DIR.exists() else []
+        if existing_ggufs:
+            MODEL_PATH = existing_ggufs[0].resolve()
+
+
+def get_available_models(models_dir: Path | None = None) -> list[dict[str, Any]]:
+    """Scan models directory for available .gguf files and return detailed metadata."""
+    target_dir = MODELS_DIR if models_dir is None else models_dir
+    found: list[dict[str, Any]] = []
+    if target_dir.exists():
+        for f in target_dir.glob("*.gguf"):
+            try:
+                size_mb = round(f.stat().st_size / (1024 * 1024), 1)
+                size_gb = round(size_mb / 1024, 2)
+            except OSError:
+                size_mb, size_gb = 0.0, 0.0
+            fname = f.name
+            fname_lower = fname.lower()
+            if "qwen3" in fname_lower:
+                model_type = "Qwen 3 8B (Fine-tuned)"
+            elif "qwen" in fname_lower:
+                model_type = "Qwen 2.5 (Fine-tuned)"
+            elif "llama-3.2-3b" in fname_lower:
+                model_type = "Llama 3.2 3B Instruct"
+            elif "llama" in fname_lower:
+                model_type = "Llama"
+            else:
+                model_type = "GGUF Model"
+            label = f"{fname} ({size_gb:.1f} GB — {model_type})"
+            found.append({
+                "filename": fname,
+                "path": str(f.resolve()),
+                "size_mb": size_mb,
+                "size_gb": size_gb,
+                "model_type": model_type,
+                "label": label,
+                "is_qwen": "qwen" in fname_lower,
+            })
+    # Sort: Qwen models first, then by size descending
+    found.sort(key=lambda x: (not x["is_qwen"], -x["size_mb"]))
+    return found
 
 DB_PATH: Path = _resolve_path("ECHOTEXT_DB_PATH", "proxy_memory.db")
 STATUS_FILE_PATH: Path = _resolve_path("ECHOTEXT_STATUS_FILE", "proxy_status.txt")

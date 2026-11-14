@@ -36,15 +36,18 @@ from config import (
     ALLOWED_HOSTS,
     API_SECRET_KEY,
     AUTO_SEND_DELAY_SECONDS,
+    BASE_DIR,
     CONTEXT_WINDOW,
     DB_PATH,
     DEFAULT_HISTORY_LIMIT,
     MAX_NEW_TOKENS,
     MODEL_PATH,
+    MODELS_DIR,
     NUM_DRAFT_OPTIONS,
     OWNER_NAME,
     RAG_DIR,
     STATUS_FILE_PATH,
+    get_available_models,
     get_proxy_status,
     redact_text,
     set_proxy_status,
@@ -101,6 +104,7 @@ from intelligence import (
     build_unsure_holding_cards,
     check_ai_uncertainty,
     classify_triage,
+    clean_llm_output,
     combine_and_refine_partial_replies,
     format_batch_group_prompt,
     format_reply_with_footer as append_footer,
@@ -119,6 +123,7 @@ logger = setup_logging("echotext.server")
 _MODEL_LOCK = threading.Lock()
 _LLM_INSTANCE: Any = None
 _LLM_LOAD_ERROR: str | None = None
+_CURRENT_MODEL_PATH: str | None = None
 
 _NOTIFICATIONS_LOCK = threading.Lock()
 _OWNER_NOTIFICATIONS: deque[dict[str, Any]] = deque(maxlen=200)
@@ -156,33 +161,69 @@ def verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="Invalid X-API-Key header.")
 
 
-def get_llm() -> Any:
-    """Lazy-load the Llama GGUF model under a lock on first inference request."""
-    global _LLM_INSTANCE, _LLM_LOAD_ERROR
+def resolve_active_model_path() -> Path:
+    """Resolve the active GGUF model path from database settings, env, or models dir."""
+    try:
+        settings = get_all_system_settings()
+        stored_path = str(settings.get("model_path", "")).strip()
+        if stored_path:
+            p = Path(stored_path)
+            if not p.is_absolute():
+                p = (BASE_DIR / p).resolve()
+            if p.exists():
+                return p
+            p_in_models = (MODELS_DIR / stored_path).resolve()
+            if p_in_models.exists():
+                return p_in_models
+    except Exception:
+        pass
+    return MODEL_PATH
+
+
+def get_llm(reload: bool = False, model_path_override: Path | str | None = None) -> Any:
+    """Lazy-load or reload the GGUF model under a thread lock."""
+    global _LLM_INSTANCE, _LLM_LOAD_ERROR, _CURRENT_MODEL_PATH
     with _MODEL_LOCK:
-        if _LLM_INSTANCE is not None:
+        if model_path_override is not None:
+            target_path = Path(model_path_override)
+            if not target_path.is_absolute():
+                target_path = (BASE_DIR / target_path).resolve()
+        else:
+            target_path = resolve_active_model_path()
+
+        if not reload and _LLM_INSTANCE is not None and str(target_path) == _CURRENT_MODEL_PATH:
             return _LLM_INSTANCE
-        if not MODEL_PATH.exists():
-            _LLM_LOAD_ERROR = f"Model file not found at {MODEL_PATH}"
+
+        if not target_path.exists():
+            _LLM_LOAD_ERROR = f"Model file not found at {target_path}"
             return None
+
         try:
             from llama_cpp import Llama  # type: ignore[import-not-found]
 
-            logger.info("Loading GGUF model from %s ...", MODEL_PATH)
+            if _LLM_INSTANCE is not None:
+                try:
+                    del _LLM_INSTANCE
+                except Exception:
+                    pass
+                _LLM_INSTANCE = None
+
+            logger.info("Loading GGUF model from %s ...", target_path)
             _LLM_INSTANCE = Llama(
-                model_path=str(MODEL_PATH),
+                model_path=str(target_path),
                 n_ctx=CONTEXT_WINDOW,
                 n_threads=int(ACTIVE_PROFILE["n_threads"]),
                 n_batch=int(ACTIVE_PROFILE["n_batch"]),
                 n_gpu_layers=int(ACTIVE_PROFILE["n_gpu_layers"]),
                 verbose=False,
             )
+            _CURRENT_MODEL_PATH = str(target_path)
             _LLM_LOAD_ERROR = None
-            logger.info("GGUF model loaded successfully.")
+            logger.info("GGUF model loaded successfully from %s", target_path)
             return _LLM_INSTANCE
         except Exception as exc:
             _LLM_LOAD_ERROR = str(exc)
-            logger.exception("Failed to load GGUF model from %s", MODEL_PATH)
+            logger.exception("Failed to load GGUF model from %s", target_path)
             return None
 
 
@@ -196,13 +237,24 @@ def _run_llm_chat(messages: list[dict[str, str]], temperature: float = 0.5) -> s
             messages=messages,
             max_tokens=MAX_NEW_TOKENS,
             temperature=temperature,
-            stop=["<|eot_id|>", "<|end_of_text|>", "\nUser:", "\nSender:"],
+            stop=[
+                "<|im_end|>",
+                "<|im_start|>",
+                "<|endoftext|>",
+                "<|eot_id|>",
+                "<|end_of_text|>",
+                "\nUser:",
+                "\nSender:",
+                "\nRecipient:",
+                "\nContact:",
+            ],
         )
     choices = response.get("choices") or []
     if not choices:
         return ""
     msg = choices[0].get("message") or {}
-    return str(msg.get("content") or "").strip()
+    raw_content = str(msg.get("content") or "").strip()
+    return clean_llm_output(raw_content)
 
 
 class ChatRequest(BaseModel):
@@ -308,6 +360,15 @@ class PurgeRequest(BaseModel):
 
 class NotificationReadRequest(BaseModel):
     notification_id: int | None = Field(default=None)
+
+
+class ModelSwitchRequest(BaseModel):
+    model_filename: str = Field(..., min_length=1, description="Filename or relative path to GGUF model")
+
+
+class ModelTestRequest(BaseModel):
+    prompt: str = Field(default="bhai kya scene hai aaj shaam ko?", description="Test prompt to run")
+    system_prompt: str | None = Field(default=None, description="Optional system prompt")
 
 
 @dataclass(frozen=True)
@@ -1602,3 +1663,73 @@ def api_list_audit_logs(limit: int = 50) -> dict[str, Any]:
     """Return recent audit log entries."""
     items = list_audit_logs(limit=limit)
     return {"count": len(items), "logs": items}
+
+
+@app.get("/api/model/list", dependencies=[Depends(verify_api_key)])
+def api_list_models() -> dict[str, Any]:
+    """List all available .gguf models found in the models directory."""
+    models = get_available_models()
+    active_path = str(resolve_active_model_path())
+    for m in models:
+        m["is_active"] = (m["path"] == active_path or m["filename"] == Path(active_path).name)
+    return {
+        "status": "ok",
+        "active_model_path": active_path,
+        "active_model_name": Path(active_path).name,
+        "is_loaded": _LLM_INSTANCE is not None,
+        "models": models,
+    }
+
+
+@app.post("/api/model/switch", dependencies=[Depends(verify_api_key)])
+def api_switch_model(payload: ModelSwitchRequest) -> dict[str, Any]:
+    """Switch the active local GGUF model and reload in memory."""
+    req_name = payload.model_filename.strip()
+    target = (MODELS_DIR / req_name).resolve() if not Path(req_name).is_absolute() else Path(req_name).resolve()
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"Model file not found: {target.name}")
+
+    rel_path = f"models/{target.name}"
+    save_system_settings({"model_path": rel_path})
+
+    llm = get_llm(reload=True, model_path_override=target)
+    if llm is None:
+        raise HTTPException(status_code=500, detail=f"Failed to load model {target.name}: {_LLM_LOAD_ERROR}")
+
+    return {
+        "status": "ok",
+        "message": f"Successfully switched to model {target.name}",
+        "active_model_path": str(target),
+        "active_model_name": target.name,
+        "size_mb": round(target.stat().st_size / (1024 * 1024), 1),
+    }
+
+
+@app.post("/api/model/test", dependencies=[Depends(verify_api_key)])
+def api_test_model(payload: ModelTestRequest) -> dict[str, Any]:
+    """Run a quick test inference with the active model and report latency & reply."""
+    llm = get_llm()
+    if llm is None:
+        raise HTTPException(status_code=503, detail=f"LLM not loaded: {_LLM_LOAD_ERROR}")
+
+    sys_content = payload.system_prompt or (
+        f"You are EchoText, {OWNER_NAME}'s AI Telegram reply assistant. "
+        "Reply concisely in the exact tone and language of the sender."
+    )
+    test_messages = [
+        {"role": "system", "content": sys_content},
+        {"role": "user", "content": payload.prompt},
+    ]
+
+    import time
+    t0 = time.perf_counter()
+    reply = _run_llm_chat(test_messages, temperature=0.3)
+    latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+    return {
+        "status": "ok",
+        "prompt": payload.prompt,
+        "reply": reply,
+        "latency_ms": latency_ms,
+        "model_name": Path(_CURRENT_MODEL_PATH or "").name if _CURRENT_MODEL_PATH else "unknown",
+    }

@@ -41,6 +41,7 @@ if str(BASE_DIR) not in sys.path:
 from config import MODEL_PATH, OWNER_NAME  # type: ignore[import-not-found]
 from intelligence import (  # type: ignore[import-not-found]
     build_Safe_chat_messages,
+    clean_llm_output,
     detect_language_style,
     violates_relation_or_tone,
 )
@@ -70,7 +71,7 @@ def get_benchmark_llm() -> Any:
 
 def query_model(
     messages: list[dict[str, str]],
-    max_tokens: int = 48,
+    max_tokens: int = 72,
     temperature: float = 0.2,
 ) -> str:
     """Run chat completion with conservative max_tokens tailored for proxy messaging."""
@@ -82,19 +83,22 @@ def query_model(
         max_tokens=max_tokens,
         temperature=temperature,
         stop=[
+            "<|im_end|>",
+            "<|im_start|>",
+            "<|endoftext|>",
             "<|eot_id|>",
             "<|end_of_text|>",
             "\nUser:",
             "\nSender:",
             "\nRecipient:",
             "\nContact:",
-            "\n\n",
         ],
     )
     choices = res.get("choices") or []
     if not choices:
         return ""
-    return str(choices[0].get("message", {}).get("content") or "").strip()
+    raw = str(choices[0].get("message", {}).get("content") or "").strip()
+    return clean_llm_output(raw)
 
 _DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
 _INFORMAL_SLANG_RE = re.compile(
@@ -750,7 +754,7 @@ def evaluate_single_case(test_case: dict[str, Any]) -> dict[str, Any]:
     )
 
     t0 = time.perf_counter()
-    raw_reply = query_model(messages, max_tokens=48, temperature=0.2)
+    raw_reply = query_model(messages, max_tokens=72, temperature=0.2)
     latency = round(time.perf_counter() - t0, 3)
 
     reply = raw_reply.strip()

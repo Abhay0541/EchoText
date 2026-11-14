@@ -662,6 +662,21 @@ def format_batch_group_prompt(group: list[str], part_index: int = 1, total_parts
     return f"{header}{numbered}"
 
 
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_THINK_OPEN_RE = re.compile(r"<think>.*$", re.DOTALL | re.IGNORECASE)
+_THINK_CLOSE_RE = re.compile(r"^.*?<\/think>", re.DOTALL | re.IGNORECASE)
+
+
+def clean_llm_output(text: str) -> str:
+    """Strip internal reasoning tags (<think>...</think>) from thinking models like Qwen 3."""
+    if not text:
+        return ""
+    cleaned = _THINK_BLOCK_RE.sub("", text)
+    cleaned = _THINK_CLOSE_RE.sub("", cleaned)
+    cleaned = _THINK_OPEN_RE.sub("", cleaned)
+    return cleaned.strip()
+
+
 def ensure_grammatical_sentence(text: str) -> str:
     """Normalize whitespace, capitalize start, and ensure clean terminal punctuation."""
     cleaned = re.sub(r"\s+", " ", (text or "").strip())
@@ -1103,7 +1118,8 @@ def generate_reply_cards_detailed(
                     ),
                 }
             try:
-                out = llm_callable(augmented_messages, temp).strip()
+                raw_out = llm_callable(augmented_messages, temp).strip()
+                out = clean_llm_output(raw_out)
                 if out:
                     used_llm = True
                     violates, v_reason = violates_relation_or_tone(
@@ -1134,7 +1150,8 @@ def generate_reply_cards_detailed(
                                     f"Write a clean reply strictly in {effective_tone} for relationship={tier} using ONLY <reference_notes>:"
                                 ),
                             }
-                        retry_out = llm_callable(retry_msgs, 0.1).strip()
+                        retry_raw = llm_callable(retry_msgs, 0.1).strip()
+                        retry_out = clean_llm_output(retry_raw)
                         r_violates, _ = violates_relation_or_tone(
                             retry_out, relationship_tier=tier, tone=effective_tone
                         )

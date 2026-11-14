@@ -35,6 +35,12 @@ rag_memory/
 logs/
 *.log
 
+# Kaggle scripts and artifacts
+kaggle_output/
+kaggle_push/
+kaggle_test_cell.py
+gguf_download/
+
 # Python / Tooling caches
 __pycache__/
 *.py[cod]

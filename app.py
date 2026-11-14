@@ -28,6 +28,7 @@ from config import (
     ACTIVE_PROFILE,
     API_SECRET_KEY,
     AUTO_SEND_DELAY_SECONDS,
+    BASE_DIR,
     COOLDOWN_SECONDS,
     DEFAULT_FOOTER_TEXT,
     HARDWARE_PROFILE,
@@ -35,6 +36,7 @@ from config import (
     MAX_AUTO_REPLIES_PER_HOUR,
     MODEL_PATH,
     MODEL_PROFILES,
+    MODELS_DIR,
     OWNER_NAME,
     RAG_DIR,
     RETENTION_DAYS,
@@ -46,6 +48,7 @@ from config import (
     VALID_TIERS,
     VALID_TONES,
     escape_markdown,
+    get_available_models,
     get_proxy_status,
     set_proxy_status,
 )
@@ -1337,17 +1340,46 @@ def _render_settings_tab() -> None:
     # Category 4: Hardware & Model Profile
     with st.container(border=True):
         st.markdown("#### ⚡ Hardware Profile & Local AI Engine")
-        st.caption("Configure how the local LLaMA GGUF inference engine runs on your hardware.")
+        st.caption("Select and verify your local GGUF inference model. Models are automatically discovered from `EchoText/models/`.")
+
+        available_models = get_available_models()
+        model_filenames = [m["filename"] for m in available_models]
+
+        cur_stored_path = str(settings.get("model_path", "")).strip()
+        cur_active_fname = Path(cur_stored_path).name if cur_stored_path else MODEL_PATH.name
+
+        if cur_active_fname in model_filenames:
+            default_model_idx = model_filenames.index(cur_active_fname)
+        elif "echotext-qwen3-8b-Q4_K_M.gguf" in model_filenames:
+            default_model_idx = model_filenames.index("echotext-qwen3-8b-Q4_K_M.gguf")
+        else:
+            default_model_idx = 0
 
         h_col1, h_col2 = st.columns(2)
         with h_col1:
+            if available_models:
+                selected_model_idx = st.selectbox(
+                    "🤖 Active AI Model (GGUF)",
+                    range(len(available_models)),
+                    format_func=lambda idx: available_models[idx]["label"],
+                    index=default_model_idx,
+                    help="Choose which model EchoText uses for drafting and auto-replies.",
+                )
+                chosen_model = available_models[selected_model_idx]
+                val_model_path = f"models/{chosen_model['filename']}"
+                st.caption(f"📁 Path: `{chosen_model['path']}` • Size: **{chosen_model['size_gb']:.1f} GB**")
+            else:
+                st.warning("⚠️ No `.gguf` models found in `EchoText/models/`.")
+                val_model_path = st.text_input("Custom GGUF Model Path", value=cur_stored_path)
+
             prof_options = list(MODEL_PROFILES.keys())
-            cur_prof = str(settings.get("hardware_profile", HARDWARE_PROFILE))
+            # Auto-suggest profile based on model size
+            suggested_profile = "pc_8b" if (available_models and "qwen3" in chosen_model["filename"].lower()) else HARDWARE_PROFILE
+            cur_prof = str(settings.get("hardware_profile", suggested_profile))
             prof_idx = prof_options.index(cur_prof) if cur_prof in prof_options else 0
             val_profile = st.selectbox("Hardware Optimization Profile", prof_options, index=prof_idx)
             st.caption(f"Profile: `{MODEL_PROFILES[val_profile]['description']}`")
 
-        with h_col2:
             val_gpu_layers = st.number_input(
                 "GPU Offload Layers (0 for CPU only)",
                 min_value=0,
@@ -1355,11 +1387,88 @@ def _render_settings_tab() -> None:
                 value=int(settings.get("gpu_layers", 0)),
                 help="Set to 20-33 if you have an NVIDIA GPU to accelerate inference. Default: 0.",
             )
-            val_model_path = st.text_input(
-                "Custom GGUF Model Path (leave empty for default)",
-                value=str(settings.get("model_path", "")),
-                placeholder="e.g. models/Llama-3.2-3B-Instruct.Q8_0.gguf",
+
+        with h_col2:
+            st.markdown("##### 🧪 Test Model Live Inference")
+            st.caption("Verify how your selected model replies to different tones before saving.")
+            test_preset = st.selectbox(
+                "Quick Test Preset",
+                [
+                    "Friend Casual Hinglish: 'bhai kya scene hai aaj shaam ko?'",
+                    "Professor Formal English: 'Dear Aman, please share your progress report by 5 PM.'",
+                    "Family Warm Hindi: 'beta khana kha liya? kab tak ghar aaoge?'",
+                    "Colleague Semi-Formal: 'Can we sync up at 4 PM for the code review?'",
+                    "Custom Message...",
+                ],
+                index=0,
             )
+            if test_preset == "Custom Message...":
+                custom_test_msg = st.text_input("Enter incoming message to test", value="bhai kal movie chalte hai?")
+            else:
+                custom_test_msg = test_preset.split(": ", 1)[-1].strip("'\"")
+
+            if st.button("🚀 Test Selected Model Reply", use_container_width=True):
+                with st.spinner("Generating test reply with local model..."):
+                    # Check via server API first
+                    test_res = _call_server_api(
+                        "POST",
+                        "/api/model/test",
+                        {"prompt": custom_test_msg},
+                        timeout=30.0,
+                    )
+                    if test_res and test_res.get("status") == "ok":
+                        st.success(f"✅ Generated in {test_res.get('latency_ms', 0):.0f} ms via `{test_res.get('model_name')}`:")
+                        st.markdown(
+                            f"""
+                            <div style="background: rgba(30, 41, 59, 0.9); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 10px; padding: 12px 16px; margin: 8px 0;">
+                                <span style="font-size: 0.85rem; color: #94A3B8;">Incoming:</span> <i>{html.escape(custom_test_msg)}</i><br>
+                                <span style="font-size: 0.85rem; color: #818CF8; font-weight: 600;">EchoText Reply:</span><br>
+                                <span style="font-size: 1.05rem; color: #F1F5F9;">{html.escape(test_res.get('reply', ''))}</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        # Direct local inference fallback if Brain server is currently stopped
+                        try:
+                            from llama_cpp import Llama
+                            import time
+                            target_p = Path(val_model_path)
+                            if not target_p.is_absolute():
+                                target_p = (BASE_DIR / target_p).resolve()
+                            t0 = time.perf_counter()
+                            llm_temp = Llama(
+                                model_path=str(target_p),
+                                n_ctx=1024,
+                                n_threads=int(MODEL_PROFILES[val_profile]["n_threads"]),
+                                n_gpu_layers=int(val_gpu_layers),
+                                verbose=False,
+                            )
+                            resp = llm_temp.create_chat_completion(
+                                messages=[
+                                    {"role": "system", "content": f"You are EchoText, {OWNER_NAME}'s reply assistant."},
+                                    {"role": "user", "content": custom_test_msg},
+                                ],
+                                max_tokens=60,
+                                stop=["<|im_end|>", "<|im_start|>", "<|eot_id|>", "<|end_of_text|>"],
+                            )
+                            lat_ms = round((time.perf_counter() - t0) * 1000, 1)
+                            raw_reply = resp["choices"][0]["message"]["content"]
+                            from intelligence import clean_llm_output
+                            clean_rep = clean_llm_output(raw_reply)
+                            st.success(f"✅ Generated in {lat_ms:.0f} ms via `{target_p.name}`:")
+                            st.markdown(
+                                f"""
+                                <div style="background: rgba(30, 41, 59, 0.9); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 10px; padding: 12px 16px; margin: 8px 0;">
+                                    <span style="font-size: 0.85rem; color: #94A3B8;">Incoming:</span> <i>{html.escape(custom_test_msg)}</i><br>
+                                    <span style="font-size: 0.85rem; color: #818CF8; font-weight: 600;">EchoText Reply:</span><br>
+                                    <span style="font-size: 1.05rem; color: #F1F5F9;">{html.escape(clean_rep)}</span>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                        except Exception as exc:
+                            st.error(f"❌ Test inference failed: {exc}")
 
     # Category 5: Mobile Approval Bot (Telegram Bot API)
     with st.container(border=True):
@@ -1412,6 +1521,9 @@ def _render_settings_tab() -> None:
             }
             save_system_settings(updated_dict)
             set_sensitivity_threshold(int(val_sens))
+            # Notify live backend server to switch model immediately
+            if val_model_path:
+                _call_server_api("POST", "/api/model/switch", {"model_filename": str(val_model_path).strip()})
             st.success("✅ All system parameters updated and applied immediately!")
             st.rerun()
 
